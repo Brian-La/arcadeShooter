@@ -26,7 +26,6 @@ public:
 	//functions-------------------------------------------------------
 	void draw();		//draw override
 	float age();		//elapsed time after birth
-	float speed;		//speed of pixel mvmt
 	glm::vec3 velocity;		//velocity vec (magnitude and direction)
 
 	//variables-------------------------------------------------------
@@ -63,12 +62,15 @@ public:
 	void update();			//override update
 	void draw();
 	void setRate(float);
+	void setLifeSpan(float);
+	void setSpeed(float);
 	void setVelocity(ofVec3f);
 
 
 	//variables-------------------------------------------------------
 	SpriteSystem *sys;		//system instance
 	float rate;			//float rate
+	float speed;		//speed when using arrow keys
 	glm::vec3 velocity;			//veloc
 	float lifespan;			//lifespan of entire emitter/system	
 	float lastSpawned;		//last projectile spawned
@@ -110,7 +112,9 @@ class ofApp : public ofBaseApp{
 		ofxFloatSlider rate;
 		ofxFloatSlider life;
 		ofxVec3Slider velocity;
-		ofxLabel screenSize;
+		ofxToggle mouseOn;
+		ofxFloatSlider speedMov;
+		//ofxLabel screenSize;
 
 
 		ofxPanel gui;

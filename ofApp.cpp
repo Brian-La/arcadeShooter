@@ -8,11 +8,10 @@
 
 
 Sprite::Sprite() {
-	speed = 0;		//default speed = 0
 	velocity = glm::vec3(0, 0, 0);		//default velocity upward
 	lifespan = 0;      // lifespan of -1 => immortal 
 	birthtime = 0;	//time at creation	
-	haveImage = false;
+	haveImage = image.load("images/Beta_Missile.png");
 	haveSound = spriteSound.load("sounds/missile.wav");
 
 	//default parameters
@@ -31,7 +30,7 @@ float Sprite::age() {
 //
 void Sprite::draw() {
 
-	ofSetColor(255, 255, 255, 255);
+	ofSetColor(255, 0, 0, 255);		//lower depth
 
 	// draw image centered and add in translation amount
 	//
@@ -44,7 +43,6 @@ void Sprite::draw() {
 	else {
 		// in case no image is supplied, draw something.
 		// 
-		//ofSetColor(255, 0, 0);
 		ofDrawRectangle(-width / 2.0 + currPos.x, 
 			-height / 2.0 + currPos.y, width, height);
 	}
@@ -98,16 +96,23 @@ void SpriteSystem::draw() {
 //
 Emitter::Emitter(SpriteSystem *spriteSys) {
 	sys = spriteSys;	//personal sprite system
-	lifespan = 3000;    //projectile lifespan in ms
+	speed = 5;		//default speed
+	lifespan = 0;    //projectile lifespan in ms
 	currPos = ofVec3f(ofGetWidth() / 2.0, ofGetHeight() / 2.0, 0);		//default center
 
 	lastSpawned = 0;
 	rate = 1;    // sprites/sec
-	haveImage = image.load("images/space-invaders-ship-scaled.png");	//return t/f based on img existence
+	haveImage = image.load("images/Beta_Ship.png");	//return t/f based on img existence
 	velocity = glm::vec3(0, 0, 0);
 
-	width = 50;		//50x50 rect replacement if necc.
-	height = 50;
+	if (haveImage) {
+		width = image.getWidth();
+		height = image.getHeight();
+	}
+	else {
+		width = 50;		//50x50 rect replacement if necc.
+		height = 50;
+	}
 }
 
 //  Update the Emitter. If it has been started, spawn new sprites with
@@ -133,7 +138,7 @@ void Emitter::update() {
 		}
 		sprite.velocity = velocity;
 		sprite.lifespan = lifespan;
-		sprite.setPosition(ofVec3f(currPos.x, currPos.y + 100, currPos.z));
+		sprite.currPos = (!haveImage) ? currPos : ofVec3f(currPos.x, currPos.y + 100, currPos.z);	//currPos adjustment based on img presence
 		sprite.birthtime = time;
 		sys->add(sprite);
 		lastSpawned = time;
@@ -151,13 +156,19 @@ void Emitter::draw() {
 		width = image.getWidth();
 		height = image.getHeight();
 
-		image.draw(-width / 2.0 + currPos.x, height / 2.0 + currPos.y);
+
+		//bound player movement
+		if (currPos.y <= 0)
+			image.draw(-width / 2.0 + currPos.x, height / 2.0);
+		else if (currPos.y >= ofGetHeight() / 2.0)
+			image.draw(-width / 2.0 + currPos.x, height / 2.0 + ofGetHeight() / 2.0);
+		else
+			image.draw(-width / 2.0 + currPos.x, height / 2.0 + currPos.y);
 	}
 	else {
-		ofSetColor(0, 0, 200);
+		ofSetColor(0, 0, 0);
 		ofDrawRectangle(-width / 2 + currPos.x, -height / 2 + currPos.y, width, height);
 	}
-
 
 	// draw sprite system
 	//
@@ -169,6 +180,16 @@ void Emitter::setRate(float r) {
 	rate = r;
 }
 
+//set duration of missile travel
+void Emitter::setLifeSpan(float hp) {
+	lifespan = hp;
+}
+
+void Emitter::setSpeed(float s) {
+	speed = s;
+}
+
+//adjust velocity vector and magnitude
 void Emitter::setVelocity(ofVec3f v) {
 	velocity = v;
 }
@@ -191,10 +212,11 @@ void ofApp::setup(){
 
 	
 	gui.setup();
+	gui.add(mouseOn.setup("Mouse", true));		//set to use mouse first
+	gui.add(speedMov.setup("Speed", 5, 5, 20));
 	gui.add(rate.setup("Rate of Fire", 1, 1, 10));
-	//gui.add(life.setup("life", 5, .1, 10));
+	gui.add(life.setup("life", 5, .5, 10));
 	gui.add(velocity.setup("velocity", ofVec3f(0, -100, 0), ofVec3f(-1000, -1000, -1000), ofVec3f(1000, 1000, 1000)));
-	//bHide = false;
 
 }
 
@@ -202,6 +224,8 @@ void ofApp::setup(){
 void ofApp::update() {
 	if (play) {
 		emit->setRate(rate);
+		emit->setLifeSpan(life * 500);
+		emit->setSpeed(speedMov);
 		emit->setVelocity(ofVec3f(velocity->x, velocity->y, velocity->z));
 		emit->update();
 	}
@@ -215,9 +239,17 @@ void ofApp::draw(){
 	if (play) {
 		emit->draw();
 		gui.draw();
+		
+
+		//draw lines to represent boundaries
+		ofSetColor(ofColor::red);
+		ofDrawLine(0, emit->height / 2.0, ofGetWidth(), emit->height / 2.0);
+		ofDrawLine(0, emit->height * 1.5 + ofGetHeight() / 2.0, 
+			ofGetWidth(), emit->height * 1.5 + ofGetHeight() / 2.0);
 	}
 	else
 		ofDrawBitmapString("Press Space to start", emit->currPos);		//intro
+
 }
 
 
@@ -230,12 +262,14 @@ void ofApp::mouseMoved(int x, int y ){
 
 //--------------------------------------------------------------
 void ofApp::mouseDragged(int x, int y, int button){
-	emit->currPos = ofVec3f(x, y, 0) - mouse_last;
+	if(mouseOn)
+		emit->currPos = ofVec3f(x, y, 0) - mouse_last;
 }
 
 //--------------------------------------------------------------
 void ofApp::mousePressed(int x, int y, int button){
-	mouse_last = ofVec3f(x, y, 0) - emit->currPos;
+	if(mouseOn)
+		mouse_last = ofVec3f(x, y, 0) - emit->currPos;
 
 }
 
@@ -253,7 +287,25 @@ void ofApp::mouseExited(int x, int y){
 
 }
 
-void ofApp::keyPressed(int key) {		
+void ofApp::keyPressed(int key) {	
+	if (!mouseOn) {
+		switch (key) {
+		case OF_KEY_UP:
+			emit->currPos.y -= emit->speed;
+			break;
+		case OF_KEY_DOWN:
+			emit->currPos.y += emit->speed;
+			break;
+		case OF_KEY_RIGHT:
+			emit->currPos.x += emit->speed;
+			break;
+		case OF_KEY_LEFT:
+			emit->currPos.x -= emit->speed;
+			break;
+		default:
+			break;
+		}
+	}
 	
 }
 
@@ -263,6 +315,7 @@ void ofApp::keyReleased(int key) {
 	if (!play && key == ' ') {	//if not in game state, enable 
 		if (defaultSound.load("sounds/start.wav"))
 			defaultSound.play();
+		ofSetBackgroundColor(ofColor::white);
 		play = true;
 	}
 }
