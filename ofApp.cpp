@@ -1,384 +1,160 @@
 #include "ofApp.h"
 
 
+//check for collisions between two emitters
+bool ofApp::collision(Emitter *a, Emitter *b, Emitter *c) {
+	bool temp = false;			//local bool
 
-//
-// Basic Sprite Object
-//
-Sprite::Sprite(bool p, float id) {
-	velocity = glm::vec3(0, 0, 0);		//default velocity upward
-	life = 0;      // lifespan of -1 => immortal 
-	birthtime = 0;	//time at creation	
-	speed = 0;
-	playerSprite = p;		//set to an emitter
-	ID = id;
-	
-	if (p == true) {
-		if (img.load("images/Beta_Missile.png"))
-			haveImg = true;
-		if (snd.load("sounds/missile.mp3"))
-			haveSnd = true;
-	}
-	else {
-		if (img.load("images/Beta_Missile_2.png"))
-			haveImg = true;
-		if (snd.load("sounds/missile2.mp3"))
-			haveSnd = true;
-	}
-	
-	//else load enemy sprites...
 
-	//default parameters
-	if (haveImg) {
-		width = img.getWidth();
-		height = img.getHeight();
-	}
-	else {
-		width = 20;
-		height = 20;
-	}
-}
-
-// Return a sprite's age in milliseconds
-//
-float Sprite::age() {
-	return (ofGetElapsedTimeMillis() - birthtime);
-}
-
-//Return an adjusted currPos within SpriteSystem update
-glm::vec3 Sprite::move(bool b, float p) {
-	if (b == true) {
-		return currPos + velocity / ofGetFrameRate();		//if player, continuous vertical display
-	}
-	else {
-		if (p == 1) {
-			currPos.x += speed;
-			return curveEval(currPos.x, scale, cycle, yVal, p);		//else, change positions
+	//parse through sprites 
+	for (int i = 0; i < b->sys->sprites.size(); i++) {
+		for (int j = 0; j < a->sys->sprites.size(); j++) {
+			if (b->sys->sprites[i].inside(a->sys->sprites[j].currPos)) {
+				c->currPos = b->sys->sprites[i].currPos;
+				c->setGroupSize(10);
+				c->setOneShot(true);
+				c->start();
+				a->sys->sprites[j].life = 0;			//if within boundaries (collision), reset lifespan of sprites to 0 for cache deletion
+				b->sys->sprites[i].life = 0;
+				//playScore++;			//update player 
+				//cout << "collision detected" << endl;		//prompt
+				temp = true;			//set to true
+			}
 		}
-		else {
-			currPos.x -= speed;
-			return curveEval(currPos.x, scale, cycle, yVal, p);
+
+		if (b->sys->sprites[i].inside(a->currPos)) {
+			b->sys->sprites[i].life = 0;
+			playScore-=3;			//lose life upon collision
 		}
-	}
-}
 
-//--------------------------------------------------------------
-// Given x in pixel coordinates, return (x, y, z) on the sin wave
-// Note that "z" is not used, so it is set to "0".
-//
-// Additional Parameters
-//    scale - scales the curve in Y  (the amplitude)
-//    cycles - number of cycles in sin wave.
-//
-glm::vec3 Sprite::curveEval(float x, float scale, float cycles, float y, float det)
-{
-	// x is in screen coordinates [0, WindowWidth]
-	float u = (cycles * x * PI) / ofGetWidth();
-	if (det == 1)				//adjust movement based on "det" value
-		return (glm::vec3(x, -scale * sin(u) + y, 0));
-	else
-		return(glm::vec3(x, -scale * cos(u) + y, 0));
-}
+	}	//end for loop
 
-
-//  Render the sprite
-//
-void Sprite::draw() {
-
-	ofSetColor(255, 0, 0, 255);		//lower depth
-
-	// draw image centered and add in translation amount
-	//
-	if (haveImg)
-		img.draw(currPos.x, currPos.y);
-	else 
-		// in case no image is supplied, draw something.
-		// 
-		ofDrawRectangle(-width / 2.0 + currPos.x, 
-			-height / 2.0 + currPos.y, width, height);
-}
-
-//  Add a Sprite to the Sprite System
-//
-void SpriteSystem::add(Sprite s) {
-	sprites.push_back(s);
-}
-
-
-// Remove a sprite from the sprite system. Note that this function is not currently
-// used. The typical case is that sprites automatically get removed when the reach
-// their lifespan.
-//
-void SpriteSystem::remove(int i) {
-	sprites.erase(sprites.begin() + i);
-}
-
-
-//  Update the SpriteSystem by checking which sprites have exceeded their
-//  lifespan (and deleting).  Also the sprite is moved to it's next
-//  location based on velocity and direction.
-//
-void SpriteSystem::update() {
-
-	if (sprites.size() == 0) return;		//exit if no sprites
-	vector<Sprite>::iterator s = sprites.begin();	//create iterator
-	vector<Sprite>::iterator tmp;		//temporary iterator
-
-	// check which sprites have exceed their lifespan and delete
-	// from list.  When deleting multiple objects from a vector while
-	// traversing at the same time, use an iterator.
-	//
-	while (s != sprites.end()) {
-		if (s->age() > s->life) {
-			tmp = sprites.erase(s);
-			s = tmp;
+	if (temp)
+		if (collideLoaded) {
+			collide.play();
+			collide.setVolume(0.3f);
 		}
-		else s++;	
-	}
-
-	//  Move sprite
-	//
-	for (int i = 0; i < sprites.size(); i++) {
-		sprites[i].currPos = sprites[i].move(sprites[i].playerSprite, sprites[i].ID);		//adjust currPos based on emitter
-	}
+	return temp;		//return bool val
 }
-
-//  Render all the sprites
-//
-void SpriteSystem::draw() {
-	for (int i = 0; i < sprites.size(); i++) {
-		sprites[i].draw();
-	}
-}
-
-//  Create a new Emitter - equipped w/ SpriteSystem (PLAYER)
-//
-Emitter::Emitter(SpriteSystem *spriteSys) {
-	isPlayer = true;
-	//------------------------------------------
-	sys = spriteSys;	//personal sprite system
-	speed = 5;		//default speed
-	lifespan = 2000;    //projectile lifespan in ms
-	currPos = ofVec3f(ofGetWidth() / 2.0, ofGetHeight() / 2.0, 0);		//default center
-	scale = 0;
-	cycle = 0;
-	
-	lastSpawned = 0;
-	rate = 3;    // sprites/sec
-	velocity = glm::vec3(0, -500, 0);			//default projectiles
-
-	if (image.load("images/Beta_Ship.png"))
-		haveImage = true;	//return t/f based on img existence
-
-	if (haveImage) {
-		width = image.getWidth();
-		height = image.getHeight();
-	}
-	else {
-		width = 50;		//50x50 rect replacement if necc.
-		height = 50;
-	}
-}
-
-//Create a new Emitter - equipped w/ SpriteSystem (ENEMY)
-//
-Emitter::Emitter(SpriteSystem *spriteSys, float id) {
-	isPlayer = false;				//SET TO FALSE TO DENOTE ENEMY
-	cycle = 4;
-	scale = 200;
-	ID = id;
-	//-----------------------------------------------------------
-
-	sys = spriteSys;	//personal sprite system
-	speed = 4;		//default speed
-	lifespan = 5;    //projectile lifespan in ms
-	if (ID == 1)
-		currPos = ofVec3f(0, 300, 0);		//default position
-	else
-		currPos = ofVec3f(ofGetWidth(), 300, 0);
-
-	lastSpawned = 0;
-	rate = 3;    // sprites/sec
-	velocity = glm::vec3(0, 0, 0);			//default projectiles
-
-	//haveImage = image.load("images/Beta_Ship.png");	//return t/f based on img existence
-	if (haveImage) {
-		width = image.getWidth();
-		height = image.getHeight();
-	}
-	else {
-		width = 50;		//50x50 rect replacement if necc.
-		height = 50;
-	}
-}
-
-
-
-//  Update the Emitter. If it has been started, spawn new sprites with
-//  initial velocity, lifespan, birthtime.
-//
-void Emitter::update() {
-
-	//iterate through SpriteSystem, delete or move existing sprites
-	sys->update();
-
-	if(isPlayer)
-		if (!ofGetKeyPressed(' ')) return;		//exit if space not pressed
-
-	//current time-------------------
-	//check elapsed time; wait until spawning next sprite based on rate
-	float time = ofGetElapsedTimeMillis();
-
-	if ((time - lastSpawned) > (1000.0 / rate)) {
-		// spawn a new sprite
-		Sprite sprite(isPlayer, ID);
-
-		if (sprite.haveSnd) {
-			sprite.snd.setVolume(0.3f);
-			sprite.snd.play();
-		}
-		sprite.velocity = velocity;
-		sprite.life = lifespan;
-		sprite.currPos = currPos;
-		sprite.yVal = yVal;
-		sprite.birthtime = time;
-		sprite.scale = scale;
-		sprite.cycle = cycle;
-		sprite.speed = speed;
-		sys->add(sprite);
-		lastSpawned = time;
-	}
-
-}
-
-//  Draw the Emitter if it is drawable. In many cases you would want a hidden emitter
-//
-void Emitter::draw() {
-	// draw sprite system
-	//
-	sys->draw();
-
-	//center the image/rect around position vector
-	//check if image is applicable...
-	//
-	if (haveImage) {
-		width = image.getWidth();
-		height = image.getHeight();
-
-		//bound player movement
-		if (currPos.y >= ofGetWindowHeight() - 200)
-			currPos.y = ofGetWindowHeight() - 200;
-		
-		image.draw(currPos.x, currPos.y);
-	}
-	else {
-		ofDrawRectangle(-width / 2.0 + currPos.x, -height / 2.0 + currPos.y, width, height);
-	}
-}
-
-// Set rate of fire
-void Emitter::setRate(float r) {
-	rate = r;
-}
-
-//set duration of missile travel
-void Emitter::setLifeSpan(float hp) {
-	lifespan = hp;
-}
-
-
-void Emitter::setSpeed(float s) {
-	speed = s;
-}
-
-/*
-void Emitter::setVelocity(ofVec3f v) {
-	velocity = v;
-}
-*/
-
-
 
 //--------------------------------------------------------------
 void ofApp::setup(){
 
-	//ofSetVerticalSync(true);
-	ofSetBackgroundColor(ofColor::black);
-	
+	ofSetVerticalSync(true);						//vertical sync
+	ofSetFrameRate(60);								//set frame rate to 60
+	ofSetBackgroundColor(ofColor::black);			//load screen default: black
+
+	bgLoaded = bg.load("images/BG.png");			//load background image; set bool value
+	bgSndLoaded = bgMusic.load("sounds/bgmusic.mp3");	//load background sound
+	collideLoaded = collide.load("sounds/missile2.mp3");		//collision sound
+
 	gui.setup();
-	//gui.add(mouseOn.setup("Mouse", true));		//set to use mouse first
 	gui.add(yAdjust.setup("LEFT Y", 200, 0, ofGetHeight()));
 	gui.add(yAdjust2.setup("RIGHT Y", 200, 0, ofGetHeight()));
 	gui.add(speedMov.setup("Speed", 4, 1, 10));
-	gui.add(scale.setup("Scale", 200, 1, 400));
-	gui.add(cycles.setup("Cycles", 4, 1, 10));
+	gui.add(scale.setup("Scale", 200, 1, 400));			
+	gui.add(cycles.setup("Cycles", 4, 1, 10));			//1 cycle
 	gui.add(rate.setup("Rate of Fire", 3, 1, 10));
 	gui.add(life.setup("life", 5, .5, 10));
-	//gui.add(velocity.setup("velocity", ofVec3f(0, -500, 0), ofVec3f(-1000, -1000, -1000), ofVec3f(1000, 1000, 1000)));
 
 }
 
 //--------------------------------------------------------------
 void ofApp::update() {
-	if (play) {
+	if (inGame) {
+		//BACKGROUND ANIMATION----------------------------------
+		bgPos.y += 100 * ofGetLastFrameTime();		//100 pixels per sec
+		if (bgPos.y >= ofGetHeight()) bgPos.y = 0;
 
-		//ENEMY PARAMETERS VIA GUI
+
+		//ENEMY PARAMETERS VIA GUI------------------------------
 		enemy->setRate(rate);
-		enemy->setLifeSpan(life * 500);
+		enemy->setLifeSpan(life * 1000);
 		enemy->setSpeed(speedMov);
-		enemy->currPos.y = yAdjust;
 		enemy->yVal = yAdjust;
 		enemy->scale = scale;
 		enemy->cycle = cycles;
 
 		enemy2->setRate(rate);
-		enemy2->setLifeSpan(life * 500);
+		enemy2->setLifeSpan(life * 1000);
 		enemy2->setSpeed(speedMov);
-		enemy2->currPos.y = yAdjust2;
 		enemy2->yVal = yAdjust2;
 		enemy2->scale = scale;
 		enemy2->cycle = cycles;
-		
+
+		enemy3->setRate(rate);
+		enemy3->setLifeSpan(life * 1000);
+		enemy3->setSpeed(speedMov);
+
+		enemy4->setRate(rate);
+		enemy4->setLifeSpan(life * 1500);
+		enemy4->setSpeed(speedMov);
+
+		explode->setRate(rate);
+		explode->setLifeSpan(life * 500);
+		explode->setSpeed(speedMov);
 
 		enemy->update();
 		enemy2->update();
-		//player->setVelocity(ofVec3f(velocity->x, velocity->y, velocity->z));
+		enemy3->update();
+		enemy4->update();
+
+		//attach movement to sprite
+		player->moveImage = playerMove;			
 		player->update();
 
-		for (int i = 0; i < player->sys->sprites.size(); i++) {
-			for (int j = 0; j < enemy->sys->sprites.size(); j++) {
-				if (player->sys->sprites[i].inside(enemy->sys->sprites[j].currPos)) {
-					player->sys->sprites[i].life = 0;			//if within boundaries, reset lifespan of sprites to 0 for deletion
-					enemy->sys->sprites[j].life = 0;
-					playScore++;			//update player 
-					cout << "collision detected" << endl;
-				}
-			}
-		}	//end for loop
+		if (collision(player, enemy, explode)) {
+			playScore++;			//increment
+		}
+		if (collision(player, enemy2, explode)) {
+			playScore += 2;			
+		}
+		if (collision(player, enemy3, explode)) {
+			playScore++;			
+		}
+		if (collision(player, enemy4, explode)) {
+			playScore++;			
+		}
 
+		explode->update();
+
+		if (playScore < 0) {
+			inGame = false;
+			gameOver = true;
+		}
 
 	}
 }
 
 
-//--------------------------------------------------------------
 void ofApp::draw(){
 
 	//if in play state...
-	if (play) {
+	if (inGame) {
+		//DRAW BACKGROUND-----------------------------------------------------
+		bg.draw(bgPos.x, bgPos.y, ofGetWidth(), ofGetHeight());
+		bg.draw(bgPos.x, bgPos.y - ofGetHeight(), ofGetWidth(), ofGetHeight());		//continuous animation
 
-		ofDrawBitmapStringHighlight("SCORE = " + std::to_string(playScore), ofVec3f(ofGetWidth() / 1.5, 100, 0));
-		player->draw();		//draw player
+		//--------------------------------------------------------------------
+		ofDrawBitmapStringHighlight("SCORE = " + std::to_string(playScore),
+			ofVec3f(ofGetWidth() / 1.5, 100, 0));			//display score
+		player->draw();				//draw player
 		enemy->draw();		//draw enemy
 		enemy2->draw();
+		enemy3->draw();
+		enemy4->draw();
+		explode->draw();
 		gui.draw();			//draw GUI
 		
-		ofSetColor(ofColor::red);
-		//draw lines to represent boundaries
-		ofDrawLine(0, ofGetWindowHeight() - 80, ofGetWidth(), ofGetWindowHeight() - 80);
 	}
-	else
-		ofDrawBitmapString("Press Space to Start", player->currPos);		//intro prompt otherwise
+	else {
+		if(!gameOver)
+			ofDrawBitmapString("Press Space to Start", ofVec2f(ofGetWidth() / 2.0, ofGetHeight() / 2.0));		//center intro
+		else {
+			ofSetBackgroundColor(ofColor::black);
+			ofDrawBitmapString("GAME OVER", ofVec2f(ofGetWidth() / 2.0, ofGetHeight() / 2.0));		//center intro
+		}
+	}
 
 }
 
@@ -390,20 +166,19 @@ void ofApp::mouseMoved(int x, int y ){
 
 //--------------------------------------------------------------
 void ofApp::mouseDragged(int x, int y, int button){
-	//if(mouseOn)
 	player->currPos = ofVec3f(x, y, 0) - mouse_last;		//parallel player displacement
+	playerMove = true;
 }
 
 //--------------------------------------------------------------
 void ofApp::mousePressed(int x, int y, int button){
-	//if(mouseOn)
 	mouse_last = ofVec3f(x, y, 0) - player->currPos;		//save mouse position
 
 }
 
 //--------------------------------------------------------------
 void ofApp::mouseReleased(int x, int y, int button){
-
+	playerMove = false;
 }
 
 //--------------------------------------------------------------
@@ -416,36 +191,63 @@ void ofApp::mouseExited(int x, int y){
 }
 
 void ofApp::keyPressed(int key) {	
-	/*if (!mouseOn) {
+
+		//assign new force values depending on which direction moved
 		switch (key) {
-		case OF_KEY_UP:
-			emit->currPos.y -= emit->speed;
+		case OF_KEY_LEFT:   // move left
+			player->force = ofVec3f(-player->fVal, 0, 0);
+			playerMove = true;
 			break;
-		case OF_KEY_DOWN:
-			emit->currPos.y += emit->speed;
+		case OF_KEY_RIGHT:  // move right
+			player->force = ofVec3f(player->fVal, 0, 0);
+			playerMove = true;
 			break;
-		case OF_KEY_RIGHT:
-			emit->currPos.x += emit->speed;
+		case OF_KEY_UP:     // move forward
+			player->force = ofVec3f(0, -player->fVal, 0);
+			playerMove = true;
 			break;
-		case OF_KEY_LEFT:
-			emit->currPos.x -= emit->speed;
-			break;
-		default:
+		case OF_KEY_DOWN:   // go backward
+			player->force = ofVec3f(0, player->fVal, 0);
+			playerMove = true;
 			break;
 		}
-	} */
 	
 }
 
 
 //--------------------------------------------------------------
 void ofApp::keyReleased(int key) {
-	if (!play && key == ' ') {	//if not in game state, enable 
+
+	//enable game state
+	if (!inGame && key == ' ') {	 
 		if (defaultSound.load("sounds/start.wav"))		//play start sound
 			defaultSound.play();
 		ofSetBackgroundColor(ofColor::white);		//default BG settings
-		play = true;			//set play state
+		inGame = true;			//set play state
+		player->start();
+		playScore = 10;			//set play score
 
+		//start music
+		if (bgSndLoaded) {
+			bgMusic.setLoop(true);
+			bgMusic.play();
+			bgMusic.setVolume(0.2f);
+		}
+		
+
+	}
+
+	//reset all forces to 0 once key is released
+	switch (key) {
+	case OF_KEY_LEFT:  
+	case OF_KEY_RIGHT: 
+	case OF_KEY_UP:
+	case OF_KEY_DOWN:
+		player->force = ofVec3f(0, 0, 0);
+		playerMove = false;
+		break;
+	default:
+		break;
 	}
 }
 
